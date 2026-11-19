@@ -12,6 +12,8 @@ import android.webkit.WebViewClient;
 
 import com.marvis.signin.data.Store;
 
+import org.json.JSONObject;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -23,19 +25,23 @@ import java.util.concurrent.TimeUnit;
  * 浏览器会话：注入 operationToken / user_token 登录态 Cookie，加载活动页，
  * 自动定位并点击「签到 / 领取」类按钮（含确认弹窗的二次点击）。
  *
- * 线程纪律（v1.7.2 修正，真机上报 IllegalStateException 后重写）：
- *   Android 的 View / WebView / WebSettings / CookieManager 全部要求在主线程
- *   （UI 线程）调用，任何带 Looper 的子线程都不行。因此：
- *   - 本类所有 WebView 相关操作统一 post 到主线程 Handler 执行；
- *   - 调用方是 SignEngine 的后台工作线程，在闭锁上等待结果（阻塞的是工作
- *     线程，主线程保持空闲可以处理 WebView 事件，互不卡死）；
- *   - 在主线程直接调用本方法会被立即拒绝并返回错误说明（避免闭锁死等）。
+ * 线程纪律（v1.7.2 修正）：View / WebView / WebSettings / CookieManager 全部
+ * 要求在主线程调用，本类所有 WebView 相关操作统一 post 到主线程 Handler 执行；
+ * 调用方是后台工作线程，在闭锁上等待结果；主线程直接调用会被立即拒绝。
+ *
+ * v1.7.3 增强（真机反馈「未命中签到按钮」后）：
+ *   - 按钮搜索扩展到同源 iframe（不少活动页内容渲染在 frame 里）；
+ *   - 按钮文案词表扩充（含「立即参与 / 去领取 / 领积分 / 参加活动」等变体）；
+ *   - 点击改为完整指针事件序列（pointerdown/up + mousedown/up + click），
+ *     兼容依赖 onPointerDown 的 React 组件；
+ *   - 未命中按钮时回传页面标题与可见内容片段，编排层带进报错文案，
+ *     用户反馈即可判断页面实际形态（登录页 / 空壳 / 完成态 / 按钮名不认识）。
  *
  * 最终是否签到成功不由页面判断，而是由调用方重新查询每日任务接口复核
  * （以服务端状态为准）。
  *
  * 已知限制：
- *   1. 按钮文案按常见词匹配（签到/打卡/领取/确认…），页面结构大改时可能点不中；
+ *   1. 按钮文案按常见词匹配，页面结构大改时可能点不中（此时报错会带页面片段）；
  *   2. 页面若要求真人验证（滑块/验证码）或严格设备指纹，自动流程会失败，
  *      编排层会回退为「请打开桌面端手动签到」。
  */
@@ -47,6 +53,9 @@ public class WebSessionClaimer {
         public boolean clicked = false;     // 是否命中并点击了疑似签到/领取按钮
         public String clickedText = "";     // 点击到的按钮文案
         public String pageUrl = "";         // 实际加载到的地址（可能被页面重定向）
+        /** v1.7.3 诊断回传：页面标题与可见内容片段（未命中按钮时用于报错定位）。 */
+        public String pageTitle = "";
+        public String pageText = "";
         public String detail = "";          // 未命中/失败时的说明
     }
 
@@ -56,6 +65,9 @@ public class WebSessionClaimer {
 
     /** 登录态 Cookie 的宿主（与福利社页面同域）。 */
     private static final String HOST = "https://agent.teleai.com.cn/";
+
+    /** 点击轮数：第 1 轮找主按钮，第 2-5 轮覆盖确认弹窗与慢渲染 SPA。 */
+    private static final int MAX_PASSES = 5;
 
     /**
      * 打开活动页并自动点击签到/领取按钮。
@@ -115,7 +127,7 @@ public class WebSessionClaimer {
                         public void onPageFinished(final WebView view, String u) {
                             fres.launched = true;
                             fres.pageUrl = u;
-                            if (passes >= 4) {
+                            if (passes >= MAX_PASSES) {
                                 done.countDown();
                                 return;
                             }
@@ -132,7 +144,7 @@ public class WebSessionClaimer {
                                             @Override
                                             public void onReceiveValue(String value) {
                                                 applyJsResult(fres, value);
-                                                if (pass >= 4) {
+                                                if (pass >= MAX_PASSES) {
                                                     done.countDown();
                                                 }
                                             }
@@ -144,7 +156,7 @@ public class WebSessionClaimer {
                                         done.countDown();
                                     }
                                 }
-                            }, pass == 1 ? 800L : 2000L);
+                            }, pass == 1 ? 1000L : 2500L);
                         }
                     });
                     // 硬超时：无论如何结束等待，避免卡死调用线程
@@ -207,12 +219,12 @@ public class WebSessionClaimer {
         return wv;
     }
 
-    /** 把 evaluateJavascript 返回的 JSON 字符串还原成 JS 侧的原始文案。 */
+    /** 把 evaluateJavascript 返回的 JSON 字符串还原成 JS 侧的原始字符串。 */
     private static String unwrapJs(String value) {
         String v = value == null ? "" : value.trim();
         if (v.length() >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
             try {
-                v = new org.json.JSONObject("{\"v\":" + v + "}").optString("v", v);
+                v = new JSONObject("{\"v\":" + v + "}").optString("v", v);
             } catch (Throwable ignored) {
                 v = v.substring(1, v.length() - 1);
             }
@@ -220,56 +232,97 @@ public class WebSessionClaimer {
         return v;
     }
 
+    /** 解析页面脚本回传的 JSON 结论：clicked/text/why/title/body。 */
     private static void applyJsResult(Result res, String value) {
         String v = unwrapJs(value);
-        if (v.startsWith("CLICKED:")) {
-            res.clicked = true;
-            res.clickedText = v.substring(8);
-        } else if (v.startsWith("NONE:")) {
-            if (res.detail.length() == 0) {
-                res.detail = v.substring(5);
+        if (v.length() == 0) {
+            return;
+        }
+        try {
+            JSONObject o = new JSONObject(v);
+            if (o.optBoolean("clicked", false)) {
+                res.clicked = true;
+                res.clickedText = o.optString("text", "");
+            } else if (res.detail.length() == 0) {
+                res.detail = o.optString("why", "");
             }
-        } else if (v.startsWith("ERR:")) {
-            if (res.detail.length() == 0) {
-                res.detail = "脚本执行失败：" + v.substring(4);
+            String t = o.optString("title", "");
+            if (t.length() > 0) {
+                res.pageTitle = t;
             }
+            String b = o.optString("body", "");
+            if (b.length() > 0) {
+                res.pageText = b;
+            }
+        } catch (Throwable ignored) {
+            // 非预期格式：忽略，不影响主流程
         }
     }
 
     /**
-     * 自动点击脚本。
-     * 第 1 轮找主按钮（立即签到/签到/打卡/领取…），第 2 轮起找确认类按钮（确认/知道了…），
-     * 覆盖「点击后弹确认框」的常见流程。完全匹配优先于包含匹配，排除导航类文案。
+     * 自动点击脚本（每轮执行一次，返回 JSON 结论）。
+     * 第 1 轮找主按钮（立即签到/签到/打卡/领取…），第 2 轮起找确认类按钮（确认/知道了…）。
+     * 搜索范围：主文档 + 同源 iframe；完全匹配优先，排除导航类文案；
+     * 命中后按完整指针事件序列触发，兼容 React 等组件库。
      */
     private static String jsClickPass(int pass) {
         boolean confirm = pass >= 2;
         String keys = confirm
-                ? "['确认','确定','立即领取','知道了','继续领取','马上领']"
-                : "['立即签到','去签到','签到','打卡','立即领取','领取奖励','领取','去完成']";
-        return "(function(){try{"
+                ? "['确认','确定','立即领取','知道了','继续领取','马上领','好的','我知道了','领取','继续']"
+                : "['立即签到','去签到','签到','打卡','立即领取','领取奖励','领取','去完成','立即参与','去领取','领积分','签到领','参加活动','马上签到','领取今日']";
+        return "(function(){"
+                + "var out={clicked:false,text:'',why:'',title:(document.title||''),body:''};"
+                + "try{"
+                // 收集主文档 + 同源 iframe 的文档
+                + "var docs=[document];"
+                + "try{var fs=document.querySelectorAll('iframe');"
+                + "for(var i=0;i<fs.length;i++){try{var d=fs[i].contentDocument;if(d)docs.push(d);}catch(e){}}}catch(e){}"
+                // 逐文档扫描候选元素
                 + "var keys=" + keys + ";"
                 + "var bad=/日历|记录|规则|说明|明细|排行|列表|攻略|教程|详情|中心/;"
-                + "var els=document.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit],div,span,li,p');"
-                + "var best=null,bs=-1,bt='';"
-                + "for(var i=0;i<els.length;i++){"
-                + " var el=els[i];"
-                + " var t=(el.innerText||el.textContent||el.value||'').replace(/\\s+/g,'');"
-                + " if(!t||t.length>12||bad.test(t))continue;"
-                + " for(var k=0;k<keys.length;k++){"
-                + "  if(t.indexOf(keys[k])<0)continue;"
-                + "  var r=el.getBoundingClientRect();"
-                + "  if(r.width<2||r.height<2)continue;"
-                + "  var st=window.getComputedStyle(el);"
-                + "  if(st.display==='none'||st.visibility==='hidden'||st.pointerEvents==='none')continue;"
-                + "  var sc=(t===keys[k]?50:0)+(keys.length-k)*5+(12-t.length);"
-                + "  if(sc>bs){bs=sc;best=el;bt=t;}"
-                + "  break;"
+                + "var best=null,bs=-1,bt='',bd=null;"
+                + "for(var di=0;di<docs.length;di++){var doc=docs[di];"
+                + " var els;"
+                + " try{els=doc.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit],div,span,li,p,label');}catch(e){continue;}"
+                + " for(var i=0;i<els.length;i++){"
+                + "  var el=els[i];"
+                + "  var t=(el.innerText||el.textContent||el.value||'').replace(/\\s+/g,'');"
+                + "  if(!t||t.length>12||bad.test(t))continue;"
+                + "  for(var k=0;k<keys.length;k++){"
+                + "   if(t.indexOf(keys[k])<0)continue;"
+                + "   var r=el.getBoundingClientRect();"
+                + "   if(r.width<2||r.height<2)continue;"
+                + "   var st=(el.ownerDocument.defaultView||window).getComputedStyle(el);"
+                + "   if(st.display==='none'||st.visibility==='hidden'||st.pointerEvents==='none')continue;"
+                + "   var sc=(t===keys[k]?50:0)+(keys.length-k)*5+(12-t.length)+(di===0?10:0);"
+                + "   if(sc>bs){bs=sc;best=el;bt=t;bd=di;}"
+                + "   break;"
+                + "  }"
                 + " }"
                 + "}"
-                + "if(best){best.click();return 'CLICKED:'+bt;}"
+                + "if(best){fire(best,bd);out.clicked=true;out.text=bt;"
+                + " var b2=(bd===0?document.body:(docs[bd]?docs[bd].body:null));"
+                + " out.body=snip(b2);return JSON.stringify(out);}"
+                // 未命中：回传页面诊断片段（标题 + 可见内容前 80 字）
                 + "var b=document.body?document.body.innerText:'';"
-                + "return 'NONE:'+(b.indexOf('已签到')>=0||b.indexOf('已完成')>=0||b.indexOf('明日再来')>=0"
-                + "?'页面已显示完成状态':'未找到可点击的签到按钮');"
-                + "}catch(e){return 'ERR:'+(e&&e.message?e.message:String(e));}})()";
+                + "if(!b){for(var j=1;j<docs.length;j++){try{if(docs[j]&&docs[j].body){b=docs[j].body.innerText;break;}}catch(e){}}}"
+                + "out.body=snip(b);"
+                + "var done=/已签到|已完成|明日再来|今日已领|已经签到/.test(b);"
+                + "var login=/请登录|扫码登录|立即登录|登录后查看|未登录/.test(b);"
+                + "out.why=done?'页面已显示完成状态':(login?'页面疑似要求登录（登录态 Cookie 可能未生效）':'未找到可点击的签到按钮');"
+                + "}catch(e){out.why='脚本异常:'+(e&&e.message?e.message:String(e));}"
+                + "return JSON.stringify(out);"
+                + "function snip(b){return (b||'').replace(/\\s+/g,' ').substring(0,80);}"
+                + "function fire(el,di){"
+                + " var w=(el.ownerDocument&&el.ownerDocument.defaultView)||window;"
+                + " try{el.click();}catch(e){}"
+                + " try{var r=el.getBoundingClientRect();var x=r.left+r.width/2,y=r.top+r.height/2;"
+                + "  var opts={bubbles:true,cancelable:true,view:w,clientX:x,clientY:y,button:0};"
+                + "  try{el.dispatchEvent(new w.MouseEvent('mousedown',opts));"
+                + "   el.dispatchEvent(new w.MouseEvent('mouseup',opts));}catch(e){}"
+                + "  el.dispatchEvent(new w.MouseEvent('click',opts));"
+                + " }catch(e){}"
+                + "}"
+                + "})()";
     }
 }

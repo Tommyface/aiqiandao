@@ -134,10 +134,7 @@ public class TeleAgentSign {
                 if (detail.length() > 0) {
                     detail.append("；");
                 }
-                detail.append("网页签到（").append(wr.clicked
-                        ? "已自动点击「" + wr.clickedText + "」"
-                        : (wr.launched ? "已打开活动页，未命中签到按钮：" + wr.detail
-                        : "未能打开活动页：" + wr.detail)).append("）");
+                detail.append("网页签到（").append(webAttemptText(wr)).append("）");
             } else {
                 if (detail.length() > 0) {
                     detail.append("；");
@@ -209,7 +206,7 @@ public class TeleAgentSign {
                 detail.append("；");
             }
             detail.append("网页活动「").append(shortName(a.title))
-                    .append(wr.clicked ? "」已尝试自动点击" : "」未命中页面按钮");
+                    .append(wr.clicked ? "」已尝试自动点击「" + wr.clickedText + "」" : "」未命中页面按钮");
         }
 
         // 5) 复核：做过网页尝试时重新查一次任务，以服务端状态为准
@@ -269,6 +266,33 @@ public class TeleAgentSign {
 
     private static boolean isWebType(TeleAgent.Activity a) {
         return "web".equalsIgnoreCase(a.actionType == null ? "" : a.actionType.trim());
+    }
+
+    /** 网页会话尝试结果的展示文案：命中按钮只报按钮；未命中时带上页面标题与内容片段，方便定位。 */
+    private static String webAttemptText(WebSessionClaimer.Result wr) {
+        if (wr.clicked) {
+            return "已自动点击「" + wr.clickedText + "」";
+        }
+        if (!wr.launched) {
+            return "未能打开活动页：" + wr.detail;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("已打开活动页，未命中按钮");
+        if (wr.detail != null && wr.detail.length() > 0) {
+            sb.append("：").append(wr.detail);
+        }
+        if (wr.pageTitle != null && wr.pageTitle.trim().length() > 0) {
+            sb.append("｜页面标题「").append(clip(wr.pageTitle, 16)).append("」");
+        }
+        if (wr.pageText != null && wr.pageText.trim().length() > 0) {
+            sb.append("｜页面内容「").append(clip(wr.pageText, 40)).append("」");
+        }
+        return sb.toString();
+    }
+
+    private static String clip(String s, int max) {
+        String t = s == null ? "" : s.replaceAll("\\s+", " ").trim();
+        return t.length() <= max ? t : t.substring(0, max) + "…";
     }
 
     private static String shortName(String title) {
