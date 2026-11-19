@@ -30,6 +30,9 @@ jobs:
       - name: Build APK (aapt2 + javac + d8 + zipalign + apksigner)
         run: bash build.sh
 
+      - name: Remove intermediate APKs (unsigned)
+        run: rm -f build/base.apk build/aligned.apk
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
