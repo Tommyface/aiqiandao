@@ -135,6 +135,21 @@ public class TeleAgent {
         return u;
     }
 
+    /** 把 jump_url 归一化成完整活动页地址（web 型活动的落地页，给应用内浏览器加载）。 */
+    public static String pageUrl(String jumpUrl) {
+        String u = jumpUrl == null ? "" : jumpUrl.trim();
+        if (u.length() == 0) {
+            return "";
+        }
+        if (u.startsWith("http://") || u.startsWith("https://")) {
+            return u;
+        }
+        if (!u.startsWith("/")) {
+            u = "/" + u;
+        }
+        return "https://agent.teleai.com.cn" + u;
+    }
+
     /** 鉴权请求头：与桌面客户端 O6() 生成的同一组头。 */
     public static String authHeaders(String token, String deviceId) {
         String t = token == null ? "" : token.trim();

@@ -78,6 +78,15 @@ public class TestTeleagent {
         check("裸相对路径补斜杠", "/claim/3".equals(TeleAgent.claimPath("claim/3")), null);
         check("空地址", TeleAgent.claimPath("  ").length() == 0, null);
 
+        System.out.println("\n== 2.5) pageUrl 归一化（web 型活动页） ==");
+        check("完整 URL 原样", "https://agent.teleai.com.cn/meter/teleagent/user/portal/star-welfare".equals(
+                TeleAgent.pageUrl("https://agent.teleai.com.cn/meter/teleagent/user/portal/star-welfare")), null);
+        check("相对路径补域名", "https://agent.teleai.com.cn/meter/teleagent/user/portal/x".equals(
+                TeleAgent.pageUrl("/meter/teleagent/user/portal/x")), null);
+        check("裸路径补斜杠", "https://agent.teleai.com.cn/meter/x".equals(
+                TeleAgent.pageUrl("meter/x")), null);
+        check("空地址", TeleAgent.pageUrl("  ").length() == 0, null);
+
         System.out.println("\n== 3) 可领取状态判定 ==");
         check("incomplete 可领", TeleAgent.claimable("incomplete"), null);
         check("not_joined 可领", TeleAgent.claimable("NOT_JOINED"), null);
