@@ -12,6 +12,7 @@ import android.webkit.WebViewClient;
 
 import com.marvis.signin.data.Store;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.concurrent.CountDownLatch;
@@ -29,19 +30,23 @@ import java.util.concurrent.TimeUnit;
  * 要求在主线程调用，本类所有 WebView 相关操作统一 post 到主线程 Handler 执行；
  * 调用方是后台工作线程，在闭锁上等待结果；主线程直接调用会被立即拒绝。
  *
- * v1.7.3 增强：iframe 内搜索、文案词表扩充、指针事件序列、页面诊断回传。
- *
- * v1.7.4 增强（真机诊断「页面是双11活动页但未命中按钮」后）：
- *   - 扫描穿透 Shadow DOM（阿里系/微前端页面常把组件藏在 shadowRoot 里）；
- *   - 后续轮次自动滚动页面，触发懒加载/懒渲染；
- *   - 未命中时回传页面上实际存在的按钮文案清单，便于一次性定位该点什么；
- *   - 页面内容片段扩到 200 字。
+ * v1.7.5 修正（真机诊断「页面有内容但找不到任何按钮」后，两个根因）：
+ *   - 无界面 WebView 从不挂窗口，不 layout 就没有尺寸：内容视口宽高为 0，
+ *     所有元素 getBoundingClientRect 都是 0，按可见性过滤时全部被筛掉。
+ *     现在创建后强制 measure + layout 到 1080x1920，页面有真实视口；
+ *   - 点击轮次原先挂在 onPageFinished 上，页面只加载一次就只跑第 1 轮，
+ *     「滚动 + 多轮重试」形同虚设。改为固定时间表的自调度轮次：
+ *     加载后 1.2s 跑第 1 轮，之后每 2.5s 一轮（第 2 轮起先滚动触发懒加载），
+ *     共 5 轮；onPageFinished 只负责标记页面已加载；
+ *   - 最后一轮仍未命中时，抓取页面 HTML 快照（前 6000 字符）回传，
+ *     由编排层记进抓包助手，用户可直接在 App 里查看页面真实 DOM。
  *
  * 最终是否签到成功不由页面判断，而是由调用方重新查询每日任务接口复核
  * （以服务端状态为准）。
  *
  * 已知限制：
- *   1. 按钮文案按常见词匹配，页面结构大改时可能点不中（此时报错会带页面片段）；
+ *   1. 按钮文案按常见词匹配，页面结构大改时可能点不中（此时报错会带页面片段
+ *      与 HTML 快照，便于定位）；
  *   2. 页面若要求真人验证（滑块/验证码）或严格设备指纹，自动流程会失败，
  *      编排层会回退为「请打开桌面端手动签到」。
  */
@@ -53,11 +58,12 @@ public class WebSessionClaimer {
         public boolean clicked = false;     // 是否命中并点击了疑似签到/领取按钮
         public String clickedText = "";     // 点击到的按钮文案
         public String pageUrl = "";         // 实际加载到的地址（可能被页面重定向）
-        /** v1.7.3 诊断回传：页面标题与可见内容片段（未命中按钮时用于报错定位）。 */
-        public String pageTitle = "";
-        public String pageText = "";
-        /** v1.7.4 诊断回传：页面上实际存在的按钮类元素文案（逗号分隔），用于定位该点什么。 */
+        public String pageTitle = "";      // 页面标题
+        public String pageText = "";       // 页面可见内容片段（200 字）
+        /** v1.7.4：页面上实际存在的按钮类元素文案（分隔符 /），用于定位该点什么。 */
         public String buttons = "";
+        /** v1.7.5：最后一轮未命中时的页面 HTML 快照（前 6000 字符），供抓包助手排查。 */
+        public String pageHtml = "";
         public String detail = "";          // 未命中/失败时的说明
     }
 
@@ -68,8 +74,12 @@ public class WebSessionClaimer {
     /** 登录态 Cookie 的宿主（与福利社页面同域）。 */
     private static final String HOST = "https://agent.teleai.com.cn/";
 
-    /** 点击轮数：第 1 轮找主按钮，第 2-5 轮覆盖确认弹窗与慢渲染 SPA。 */
+    /** 点击轮数：第 1 轮找主按钮，第 2-5 轮滚动 + 找确认类按钮。 */
     private static final int MAX_PASSES = 5;
+
+    /** 无界面 WebView 的强制视口（不挂窗口也必须有尺寸，否则页面内容视口为 0）。 */
+    private static final int VIEW_W = 1080;
+    private static final int VIEW_H = 1920;
 
     /**
      * 打开活动页并自动点击签到/领取按钮。
@@ -122,46 +132,58 @@ public class WebSessionClaimer {
 
                     final WebView wv = createWebView();
                     holder[0] = wv;
+                    // onPageFinished 只负责标记「页面已加载」与记录地址
                     wv.setWebViewClient(new WebViewClient() {
-                        private int passes = 0;
-
                         @Override
-                        public void onPageFinished(final WebView view, String u) {
+                        public void onPageFinished(WebView view, String u) {
                             fres.launched = true;
-                            fres.pageUrl = u;
-                            if (passes >= MAX_PASSES) {
+                            if (u != null && u.trim().length() > 0) {
+                                fres.pageUrl = u;
+                            }
+                        }
+                    });
+
+                    // 固定时间表的自调度点击轮次：加载后 1.2s 第 1 轮，之后每 2.5s 一轮，
+                    // 共 MAX_PASSES 轮；第 2 轮起脚本先滚动触发懒加载。末轮抓 HTML 快照。
+                    final Runnable[] passBox = new Runnable[1];
+                    final int[] passNo = new int[]{0};
+                    passBox[0] = new Runnable() {
+                        @Override
+                        public void run() {
+                            if (holder[0] == null) {
+                                return; // 已被清理
+                            }
+                            passNo[0]++;
+                            final int pass = passNo[0];
+                            if (pass > MAX_PASSES) {
                                 done.countDown();
                                 return;
                             }
-                            passes++;
-                            final int pass = passes;
-                            h.postDelayed(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        if (holder[0] == null) {
-                                            return; // 已被清理，不再动作
+                            final boolean last = pass == MAX_PASSES;
+                            try {
+                                holder[0].evaluateJavascript(jsClickPass(pass, last), new ValueCallback<String>() {
+                                    @Override
+                                    public void onReceiveValue(String value) {
+                                        applyJsResult(fres, value);
+                                        if (last) {
+                                            done.countDown();
+                                        } else {
+                                            // 第 1 轮给页面多点渲染时间，后续轮次 2.5s 间隔
+                                            h.postDelayed(passBox[0], pass == 1 ? 1500L : 2500L);
                                         }
-                                        view.evaluateJavascript(jsClickPass(pass), new ValueCallback<String>() {
-                                            @Override
-                                            public void onReceiveValue(String value) {
-                                                applyJsResult(fres, value);
-                                                if (pass >= MAX_PASSES) {
-                                                    done.countDown();
-                                                }
-                                            }
-                                        });
-                                    } catch (Throwable t) {
-                                        if (fres.detail.length() == 0) {
-                                            fres.detail = "页面脚本异常：" + t.getClass().getSimpleName();
-                                        }
-                                        done.countDown();
                                     }
+                                });
+                            } catch (Throwable t) {
+                                if (fres.detail.length() == 0) {
+                                    fres.detail = "页面脚本异常：" + t.getClass().getSimpleName();
                                 }
-                            }, pass == 1 ? 1000L : 2500L);
+                                done.countDown();
+                            }
                         }
-                    });
-                    // 硬超时：无论如何结束等待，避免卡死调用线程
+                    };
+                    h.postDelayed(passBox[0], 1200L);
+
+                    // 硬超时兜底：无论如何结束等待，避免卡死调用线程
                     h.postDelayed(new Runnable() {
                         @Override
                         public void run() {
@@ -204,7 +226,11 @@ public class WebSessionClaimer {
         return res;
     }
 
-    /** 无界面 WebView：JS + DOM 存储 + 桌面端 UA，不挂到任何窗口上。 */
+    /**
+     * 无界面 WebView：JS + DOM 存储 + 桌面端 UA。
+     * 关键：不挂窗口也必须强制 measure + layout 出尺寸，否则内容视口宽高为 0，
+     * 页面元素的 getBoundingClientRect 全为 0，按可见性过滤会全军覆没。
+     */
     @SuppressLint("SetJavaScriptEnabled")
     private static WebView createWebView() {
         WebView wv = new WebView(Store.APP);
@@ -218,6 +244,11 @@ public class WebSessionClaimer {
         s.setBuiltInZoomControls(false);
         s.setUserAgentString(DESKTOP_UA);
         wv.setVisibility(View.INVISIBLE);
+        // 强制布局出真实视口尺寸（无界面 WebView 的关键一步）
+        int wSpec = View.MeasureSpec.makeMeasureSpec(VIEW_W, View.MeasureSpec.EXACTLY);
+        int hSpec = View.MeasureSpec.makeMeasureSpec(VIEW_H, View.MeasureSpec.EXACTLY);
+        wv.measure(wSpec, hSpec);
+        wv.layout(0, 0, VIEW_W, VIEW_H);
         return wv;
     }
 
@@ -234,7 +265,7 @@ public class WebSessionClaimer {
         return v;
     }
 
-    /** 解析页面脚本回传的 JSON 结论：clicked/text/why/title/body/btns。 */
+    /** 解析页面脚本回传的 JSON 结论：clicked/text/why/title/body/btns/html。 */
     private static void applyJsResult(Result res, String value) {
         String v = unwrapJs(value);
         if (v.length() == 0) {
@@ -257,7 +288,7 @@ public class WebSessionClaimer {
                 res.pageText = b;
             }
             StringBuilder btns = new StringBuilder();
-            org.json.JSONArray arr = o.optJSONArray("btns");
+            JSONArray arr = o.optJSONArray("btns");
             if (arr != null) {
                 for (int i = 0; i < arr.length() && i < 10; i++) {
                     String s = arr.optString(i, "");
@@ -273,6 +304,10 @@ public class WebSessionClaimer {
             if (btns.length() > 0) {
                 res.buttons = btns.toString();
             }
+            String html = o.optString("html", "");
+            if (html.length() > 0) {
+                res.pageHtml = html;
+            }
         } catch (Throwable ignored) {
             // 非预期格式：忽略，不影响主流程
         }
@@ -280,18 +315,19 @@ public class WebSessionClaimer {
 
     /**
      * 自动点击脚本（每轮执行一次，返回 JSON 结论）。
-     * 第 1 轮找主按钮（立即签到/签到/打卡/领取…），第 2 轮起找确认类按钮（确认/知道了…）。
+     * 第 1 轮找主按钮（立即签到/签到/打卡/领取…），第 2 轮起先滚动再找确认类按钮。
      * 搜索范围：主文档 + 同源 iframe + Shadow DOM（逐层穿透）；完全匹配优先，排除导航类文案；
-     * 第 2 轮起先滚动页面触发懒加载再扫描；命中后按完整指针事件序列触发。
-     * 未命中时回传：页面标题 + 内容片段（200 字）+ 页面上实际存在的按钮文案清单。
+     * 命中后按完整指针事件序列触发。
+     * 未命中时回传：页面标题 + 内容片段（200 字）+ 实际存在的按钮清单；
+     * 末轮（captureHtml）再抓 HTML 快照（前 6000 字符）。
      */
-    private static String jsClickPass(int pass) {
+    private static String jsClickPass(int pass, boolean captureHtml) {
         boolean confirm = pass >= 2;
         String keys = confirm
                 ? "['确认','确定','立即领取','知道了','继续领取','马上领','好的','我知道了','领取','继续']"
                 : "['立即签到','去签到','签到','打卡','立即领取','领取奖励','领取','去完成','立即参与','去领取','领积分','签到领','参加活动','马上签到','领取今日','加入','抽奖','立即加入','去参与']";
         return "(function(){"
-                + "var out={clicked:false,text:'',why:'',title:(document.title||''),body:'',btns:[]};"
+                + "var out={clicked:false,text:'',why:'',title:(document.title||''),body:'',btns:[],html:''};"
                 + "try{"
                 // 后续轮次先滚动页面，触发懒加载/懒渲染
                 + "if(" + (pass >= 2) + "){try{window.scrollBy(0,Math.round(window.innerHeight*0.8));}catch(e){}}"
@@ -335,24 +371,28 @@ public class WebSessionClaimer {
                 + "if(best){fire(best,bd);out.clicked=true;out.text=bt;"
                 + " var b2=(bd===0?document.body:(docs[bd]?docs[bd].body:null));"
                 + " out.body=snip(b2);return JSON.stringify(out);}"
-                // 未命中：回传页面诊断（标题 + 内容 200 字 + 实际存在的按钮清单）
+                // 未命中：回传页面诊断（标题 + 内容 200 字 + 各文档按钮清单 + 末轮 HTML 快照）
                 + "var b=document.body?document.body.innerText:'';"
                 + "if(!b){for(var j=1;j<docs.length;j++){try{if(docs[j]&&docs[j].body){b=docs[j].body.innerText;break;}}catch(e){}}}"
                 + "out.body=snip(b);"
                 + "try{var seen={};"
-                + " var bl=document.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit]');"
-                + " for(var m=0;m<bl.length&&out.btns.length<10;m++){"
-                + "  var e2=bl[m];"
-                + "  var t2=(e2.innerText||e2.textContent||e2.value||'').replace(/\\s+/g,'');"
-                + "  if(!t2||t2.length>14||seen[t2])continue;"
-                + "  try{var r2=e2.getBoundingClientRect();if(r2.width<2||r2.height<2)continue;"
-                + "   var st2=getComputedStyle(e2);if(st2.display==='none'||st2.visibility==='hidden')continue;}catch(e3){}"
-                + "  seen[t2]=1;out.btns.push(t2);"
+                + " for(var dj=0;dj<docs.length;dj++){var d2=docs[dj];"
+                + "  var bl;"
+                + "  try{bl=d2.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit]');}catch(e){continue;}"
+                + "  for(var m=0;m<bl.length&&out.btns.length<10;m++){"
+                + "   var e2=bl[m];"
+                + "   var t2=(e2.innerText||e2.textContent||e2.value||'').replace(/\\s+/g,'');"
+                + "   if(!t2||t2.length>14||seen[t2])continue;"
+                + "   try{var r2=e2.getBoundingClientRect();if(r2.width<2||r2.height<2)continue;"
+                + "    var st2=getComputedStyle(e2);if(st2.display==='none'||st2.visibility==='hidden')continue;}catch(e3){}"
+                + "   seen[t2]=1;out.btns.push(t2);"
+                + "  }"
                 + " }"
                 + "}catch(e){}"
                 + "var done=/已签到|已完成|明日再来|今日已领|已经签到/.test(b);"
                 + "var login=/请登录|扫码登录|立即登录|登录后查看|未登录/.test(b);"
                 + "out.why=done?'页面已显示完成状态':(login?'页面疑似要求登录（登录态 Cookie 可能未生效）':'未找到可点击的签到按钮');"
+                + "if(" + captureHtml + "){try{out.html=(document.documentElement.outerHTML||'').substring(0,6000);}catch(e){}}"
                 + "}catch(e){out.why='脚本异常:'+(e&&e.message?e.message:String(e));}"
                 + "return JSON.stringify(out);"
                 + "function snip(b){return (b||'').replace(/\\s+/g,' ').substring(0,200);}"

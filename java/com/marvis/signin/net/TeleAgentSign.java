@@ -131,6 +131,7 @@ public class TeleAgentSign {
             if (Store.APP != null) {
                 WebSessionClaimer.Result wr = WebSessionClaimer.claim(
                         TeleAgent.pageUrl(main.jumpUrl), token, 25000L);
+                tracePage(p, TeleAgent.pageUrl(main.jumpUrl), wr);
                 if (detail.length() > 0) {
                     detail.append("；");
                 }
@@ -202,6 +203,7 @@ public class TeleAgentSign {
             }
             WebSessionClaimer.Result wr = WebSessionClaimer.claim(
                     TeleAgent.pageUrl(a.jumpUrl), token, 15000L);
+            tracePage(p, TeleAgent.pageUrl(a.jumpUrl), wr);
             if (detail.length() > 0) {
                 detail.append("；");
             }
@@ -285,7 +287,7 @@ public class TeleAgentSign {
             sb.append("｜标题「").append(clip(wr.pageTitle, 16)).append("」");
         }
         if (wr.buttons != null && wr.buttons.length() > 0) {
-            sb.append("｜页面按钮[").append(clip(wr.buttons, 60)).append("]");
+            sb.append("｜页面按钮[").append(clip(wr.buttons, 80)).append("]");
         }
         if (wr.pageText != null && wr.pageText.trim().length() > 0) {
             sb.append("｜内容「").append(clip(wr.pageText, 40)).append("」");
@@ -312,6 +314,28 @@ public class TeleAgentSign {
             return;
         }
         try {
+            com.marvis.signin.data.TraceStore.record(Store.APP, p, r, 0);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 把网页会话的页面快照记进抓包助手（伪报文：reqDump 是页面信息，respDump 是 HTML）。 */
+    private static void tracePage(Platform p, String url, WebSessionClaimer.Result wr) {
+        if (Store.APP == null || p == null || wr == null) {
+            return;
+        }
+        if (wr.clicked && (wr.pageHtml == null || wr.pageHtml.length() == 0)) {
+            return; // 点中了就不落页面快照，控制体积
+        }
+        try {
+            Http.Result r = new Http.Result();
+            r.code = 200;
+            r.cost = 0;
+            r.reqDump = "[网页会话] GET " + (url == null ? "" : url)
+                    + "\n[标题] " + (wr.pageTitle == null ? "" : wr.pageTitle)
+                    + "\n[按钮] " + (wr.buttons == null || wr.buttons.length() == 0 ? "（无）" : wr.buttons)
+                    + "\n[结论] " + (wr.clicked ? "已点击「" + wr.clickedText + "」" : wr.detail);
+            r.respDump = wr.pageHtml == null ? "" : wr.pageHtml;
             com.marvis.signin.data.TraceStore.record(Store.APP, p, r, 0);
         } catch (Exception ignored) {
         }

@@ -12,7 +12,7 @@ JAVAC="$JAVA_HOME/bin/javac"
 KEYTOOL="$JAVA_HOME/bin/keytool"
 export PATH="$JAVA_HOME/bin:$PATH"
 
-APK_NAME="aiqiandao-v1.7.4.apk"
+APK_NAME="aiqiandao-v1.7.5.apk"
 
 for f in "$BT/aapt2" "$BT/d8" "$BT/zipalign" "$BT/apksigner" "$ANDROID_JAR" "$JAVAC"; do
   [ -e "$f" ] || { echo "缺少构建组件: $f"; exit 1; }
