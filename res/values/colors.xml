@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#4B5BFF</color>
+    <color name="brand_dark">#3A47CC</color>
+    <color name="brand_soft">#EEF0FF</color>
+    <color name="page_bg">#F5F6FA</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="text_main">#1A1D29</color>
+    <color name="text_sub">#7A8199</color>
+    <color name="text_hint">#A9AFBF</color>
+    <color name="divider">#EDEFF5</color>
+    <color name="ok">#12B76A</color>
+    <color name="ok_bg">#E7F8F0</color>
+    <color name="fail">#F04438</color>
+    <color name="fail_bg">#FEECEA</color>
+    <color name="wait">#98A2B3</color>
+    <color name="wait_bg">#F0F2F6</color>
+    <color name="run">#4B5BFF</color>
+    <color name="run_bg">#EEF0FF</color>
+</resources>

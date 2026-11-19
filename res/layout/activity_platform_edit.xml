@@ -1,0 +1,749 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/page_bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_back"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="6dp"
+                android:paddingRight="14dp"
+                android:paddingBottom="6dp"
+                android:text="← 返回"
+                android:textColor="@color/brand"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="平台配置"
+                android:textColor="@color/text_main"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="平台名称"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="例如：Qoder"
+            android:inputType="text"
+            android:padding="12dp"
+            android:singleLine="true"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="签到接口 URL"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="https://example.com/api/checkin"
+            android:inputType="textUri"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="前置请求 URL（可空，用于取 Cookie 或提取参数）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_pre_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="https://example.com/api/checkin/status"
+            android:inputType="textUri"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="凭据与自动续期（选填）"
+            android:textColor="@color/brand"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="当前凭据（token / Cookie，签到里用 {{token}} 引用）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_cred"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:gravity="top|start"
+            android:hint="粘贴 token 或整条 Cookie，续期成功后会自动更新这里"
+            android:inputType="textMultiLine"
+            android:minLines="2"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="凭据有效期（天，选填；Qoder 约 16 天、WorkBuddy 约 30 天）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_cred_days"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="16（留空表示不做到期提醒；token 是 JWT 时自动读 exp）"
+            android:inputType="number"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tv_cred_state"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text=""
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <!-- MiniMax 专属区块：OAuth 设备码授权，令牌由 App 自己管理 -->
+        <LinearLayout
+            android:id="@+id/ll_minimax"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="MiniMax 账号授权"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="点下面的按钮会打开 MiniMax 官方登录页，登录并确认授权后回到本应用，令牌会保存在本机（access token 约 1 小时，App 会用 refresh token 自动续期）。"
+                android:textColor="@color/text_sub"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_minimax_state"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text=""
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/btn_minimax_auth"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_btn_primary"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="授权 MiniMax"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Trae CN 登录态导入 -->
+        <LinearLayout
+            android:id="@+id/ll_trae"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Trae CN 登录态导入"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="在电脑上打开 Trae 客户端，用文本编辑器打开以下文件并全选复制，粘贴到下面：
+Windows：%APPDATA%\Trae CN\User\globalStorage\storage.json
+macOS：~/Library/Application Support/Trae CN/User/globalStorage/storage.json
+App 会在本机解密出 token 与设备号，不会上传任何内容。令牌约 14 天有效，过期后重新导入即可。"
+                android:textColor="@color/text_sub"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/et_trae_storage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:gravity="top|start"
+                android:hint="粘贴 storage.json 全文"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:minLines="4"
+                android:padding="10dp"
+                android:textColor="@color/text_main"
+                android:textColorHint="@color/text_hint"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="设备号 x-device-id（自动解析，可手动修正）"
+                android:textColor="@color/text_sub"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/et_trae_device"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_input"
+                android:hint="留空则由 storage.json 自动识别"
+                android:inputType="textNoSuggestions"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:singleLine="true"
+                android:textColor="@color/text_main"
+                android:textColorHint="@color/text_hint"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_trae_state"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text=""
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/btn_trae_import"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_btn_primary"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="解析并保存登录态"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 百度搭子 Cookie 导入（桌面端签到） -->
+        <LinearLayout
+            android:id="@+id/ll_dumate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="百度搭子 Cookie（桌面端签到）"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="在电脑浏览器登录 https://dumate.baidu.com/app，按 F12 打开开发者工具 → Network → 筛选 loginBonusInfo → 复制该请求的 Cookie 请求头（至少含 BDUSS）。如果 Cookie 里没有 bce-user-info，可把同一请求的 csrfToken 请求头也一起粘贴，两行一起即可。App 只在本机保存，不会上传。"
+                android:textColor="@color/text_sub"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/et_dumate_cookie"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:gravity="top|start"
+                android:hint="粘贴完整 Cookie"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:minLines="4"
+                android:padding="10dp"
+                android:textColor="@color/text_main"
+                android:textColorHint="@color/text_hint"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_dumate_state"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text=""
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/btn_dumate_save"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_btn_primary"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="保存 Cookie 并启用桌面端签到"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- TeleAgent 令牌导入（积分福利社） -->
+        <LinearLayout
+            android:id="@+id/ll_teleagent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="TeleAgent 令牌（积分福利社签到）"
+                android:textColor="@color/text_main"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="每日签到和福利社活动是桌面端专属功能，手机端暂不支持，所以需要先拿到登录令牌：在电脑桌面端 TeleAgent 打开「头像 → 设置 → 积分福利社」，点「前往活动」或「积分账单」，页面会在浏览器打开；在浏览器按 F12 → Application（应用）→ Cookies → agent.teleai.com.cn，复制 operationToken 的值粘贴到下面（x-token 同值也可；粘贴整行 Cookie: operationToken=... 也可以）。注意：不是 operToken（少个 ation），也不是 cna、UM_distinctid 等统计 Cookie。App 只在本机保存，不会上传。"
+                android:textColor="@color/text_sub"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/et_teleagent_token"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_input"
+                android:gravity="top|start"
+                android:hint="粘贴 operationToken 值（或整行 Cookie）"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:minLines="3"
+                android:padding="10dp"
+                android:textColor="@color/text_main"
+                android:textColorHint="@color/text_hint"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="设备号（留空会自动生成并固定使用）"
+                android:textColor="@color/text_sub"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/et_teleagent_device"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_input"
+                android:hint="X-SuperAgent-Device-Id，可留空"
+                android:inputType="textNoSuggestions"
+                android:padding="10dp"
+                android:textColor="@color/text_main"
+                android:textColorHint="@color/text_hint"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_teleagent_state"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text=""
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/btn_teleagent_save"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_btn_primary"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="保存令牌并启用签到"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="续期接口 URL（拿新凭据的地址，留空则不自动续期）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_renew_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="https://example.com/api/auth/refresh"
+            android:inputType="textUri"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="续期请求方式"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <Spinner
+            android:id="@+id/sp_renew_method"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="续期请求体（可留空；可用 {{token}} 引用旧凭据）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_renew_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:gravity="top|start"
+            android:hint="JSON body"
+            android:inputType="textMultiLine"
+            android:minLines="2"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="新凭据提取路径（JSON 路径，或填 @set-cookie 取响应 Cookie）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_renew_extract"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="$.data.accessToken  或  @set-cookie"
+            android:inputType="text"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="主动续期周期（小时；填 0 或留空表示只在 401/403 时续期）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_renew_hours"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="24"
+            android:inputType="number"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btn_renew"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_btn_soft"
+            android:gravity="center"
+            android:text="只测续期接口"
+            android:textColor="@color/brand"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="请求方式"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <Spinner
+            android:id="@+id/sp_method"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="请求头（每行一条，如 Cookie: xxx）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_headers"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:gravity="top|start"
+            android:hint="Cookie: sessionid=xxx&#10;User-Agent: Mozilla/5.0"
+            android:inputType="textMultiLine"
+            android:minLines="3"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="请求体 Body（GET 可留空，JSON 直接粘贴）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:gravity="top|start"
+            android:hint="JSON body"
+            android:inputType="textMultiLine"
+            android:minLines="3"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="成功判定关键词（响应包含该词即成功，留空按 HTTP 2xx）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_keyword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="success"
+            android:inputType="text"
+            android:padding="12dp"
+            android:singleLine="true"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="已签到关键词（可空；响应命中时按成功处理并提示「已签到」，多个用 | 分隔）"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_done_keyword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_input"
+            android:hint="已签到|今天已签到"
+            android:inputType="text"
+            android:padding="12dp"
+            android:singleLine="true"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="启用该平台"
+                android:textColor="@color/text_main"
+                android:textSize="14sp" />
+
+            <Switch
+                android:id="@+id/switch_enabled"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_test_result"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:textColor="@color/text_sub"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/btn_test"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_btn_soft"
+            android:gravity="center"
+            android:text="测试签到"
+            android:textColor="@color/brand"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btn_save"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_btn_primary"
+            android:gravity="center"
+            android:text="保存"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btn_delete"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:text="删除该平台"
+            android:textColor="@color/fail"
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>
