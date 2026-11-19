@@ -268,7 +268,7 @@ public class TeleAgentSign {
         return "web".equalsIgnoreCase(a.actionType == null ? "" : a.actionType.trim());
     }
 
-    /** 网页会话尝试结果的展示文案：命中按钮只报按钮；未命中时带上页面标题与内容片段，方便定位。 */
+    /** 网页会话尝试结果的展示文案：命中按钮只报按钮；未命中时带上页面标题/内容/按钮清单，方便定位。 */
     private static String webAttemptText(WebSessionClaimer.Result wr) {
         if (wr.clicked) {
             return "已自动点击「" + wr.clickedText + "」";
@@ -282,10 +282,13 @@ public class TeleAgentSign {
             sb.append("：").append(wr.detail);
         }
         if (wr.pageTitle != null && wr.pageTitle.trim().length() > 0) {
-            sb.append("｜页面标题「").append(clip(wr.pageTitle, 16)).append("」");
+            sb.append("｜标题「").append(clip(wr.pageTitle, 16)).append("」");
+        }
+        if (wr.buttons != null && wr.buttons.length() > 0) {
+            sb.append("｜页面按钮[").append(clip(wr.buttons, 60)).append("]");
         }
         if (wr.pageText != null && wr.pageText.trim().length() > 0) {
-            sb.append("｜页面内容「").append(clip(wr.pageText, 40)).append("」");
+            sb.append("｜内容「").append(clip(wr.pageText, 40)).append("」");
         }
         return sb.toString();
     }
