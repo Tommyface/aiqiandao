@@ -12,6 +12,25 @@ AIGC:
 
 ---
 
+## v1.7.2 更新（2026-11-19）
+
+### 修复网页签到引擎在真机上崩溃（IllegalStateException）
+
+v1.7.1 真机实测发现：网页签到引擎把 WebView 创建在了带 Looper 的子线程上，被 Android 强制拒绝——`Calling View methods on another thread than the UI thread`（View/WebView/WebSettings/CookieManager 全部只允许主线程调用，任何带 Looper 的子线程都不行）。
+
+v1.7.2 重写了 `WebSessionClaimer` 的线程纪律：
+
+- **WebView 的创建、加载、脚本执行、Cookie 注入、销毁全部统一 post 到主线程 Handler 执行**；
+- 调用方（SignEngine 的后台工作线程）在闭锁上等待结果：阻塞的是工作线程，主线程保持空闲去处理 WebView 事件，互不卡死；
+- 主线程直接调用会被立即拒绝并返回明确说明（避免自我死锁）；
+- 清理动作同样回主线程（stopLoading → removeAllViews → destroy），清理后不再有后续点击。
+
+### 版本
+
+- versionCode 12 / versionName 1.7.2，签名证书不变，可覆盖安装升级。
+
+---
+
 ## v1.7.1 更新（2026-11-19）
 
 ### 网页型活动彻底自动化（应用内浏览器会话）

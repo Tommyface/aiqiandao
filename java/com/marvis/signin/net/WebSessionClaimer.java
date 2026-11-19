@@ -2,7 +2,7 @@ package com.marvis.signin.net;
 
 import android.annotation.SuppressLint;
 import android.os.Handler;
-import android.os.HandlerThread;
+import android.os.Looper;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
@@ -23,9 +23,16 @@ import java.util.concurrent.TimeUnit;
  * 浏览器会话：注入 operationToken / user_token 登录态 Cookie，加载活动页，
  * 自动定位并点击「签到 / 领取」类按钮（含确认弹窗的二次点击）。
  *
- * 运行方式：WebView 创建在专用 HandlerThread（自带 Looper）上，任何后台线程
- * 都可以同步调用 claim()，不会和主线程互相阻塞。最终是否签到成功不由页面
- * 判断，而是由调用方重新查询每日任务接口复核（以服务端状态为准）。
+ * 线程纪律（v1.7.2 修正，真机上报 IllegalStateException 后重写）：
+ *   Android 的 View / WebView / WebSettings / CookieManager 全部要求在主线程
+ *   （UI 线程）调用，任何带 Looper 的子线程都不行。因此：
+ *   - 本类所有 WebView 相关操作统一 post 到主线程 Handler 执行；
+ *   - 调用方是 SignEngine 的后台工作线程，在闭锁上等待结果（阻塞的是工作
+ *     线程，主线程保持空闲可以处理 WebView 事件，互不卡死）；
+ *   - 在主线程直接调用本方法会被立即拒绝并返回错误说明（避免闭锁死等）。
+ *
+ * 最终是否签到成功不由页面判断，而是由调用方重新查询每日任务接口复核
+ * （以服务端状态为准）。
  *
  * 已知限制：
  *   1. 按钮文案按常见词匹配（签到/打卡/领取/确认…），页面结构大改时可能点不中；
@@ -68,34 +75,38 @@ public class WebSessionClaimer {
             res.detail = "应用上下文未就绪";
             return res;
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // 本方法会闭锁等待主线程执行 WebView，主线程里调用等于自我死锁
+            res.detail = "内部错误：浏览器会话不能在主线程运行";
+            return res;
+        }
         final String fUrl = url.trim();
         final String fToken = token == null ? "" : token.trim();
         final long budget = timeoutMs <= 0 ? 15000L : timeoutMs;
         final Result fres = res;
         final CountDownLatch done = new CountDownLatch(1);
         final WebView[] holder = new WebView[1];
+        // 主线程 Handler：WebView 的创建、加载、脚本执行、销毁全部在这里排队执行
+        final Handler h = new Handler(Looper.getMainLooper());
 
-        // 登录态 Cookie：网页端鉴权读 operationToken，桌面客户端分区用 user_token，双键同值
-        try {
-            CookieManager cm = CookieManager.getInstance();
-            cm.setAcceptCookie(true);
-            if (fToken.length() > 0) {
-                cm.setCookie(HOST, "operationToken=" + fToken + "; Path=/");
-                cm.setCookie(HOST, "user_token=" + fToken + "; Path=/");
-                cm.flush();
-            }
-        } catch (Throwable ignored) {
-        }
-
-        final HandlerThread ht = new HandlerThread("webclaim");
-        ht.start();
-        final Handler h = new Handler(ht.getLooper());
-
+        // 全部 WebView 相关操作都在主线程执行（View 方法只允许主线程调用）
         h.post(new Runnable() {
             @Override
             public void run() {
                 try {
-                    WebView wv = createWebView();
+                    // 登录态 Cookie：网页端鉴权读 operationToken，桌面客户端分区用 user_token，双键同值
+                    try {
+                        CookieManager cm = CookieManager.getInstance();
+                        cm.setAcceptCookie(true);
+                        if (fToken.length() > 0) {
+                            cm.setCookie(HOST, "operationToken=" + fToken + "; Path=/");
+                            cm.setCookie(HOST, "user_token=" + fToken + "; Path=/");
+                            cm.flush();
+                        }
+                    } catch (Throwable ignored) {
+                    }
+
+                    final WebView wv = createWebView();
                     holder[0] = wv;
                     wv.setWebViewClient(new WebViewClient() {
                         private int passes = 0;
@@ -114,6 +125,9 @@ public class WebSessionClaimer {
                                 @Override
                                 public void run() {
                                     try {
+                                        if (holder[0] == null) {
+                                            return; // 已被清理，不再动作
+                                        }
                                         view.evaluateJavascript(jsClickPass(pass), new ValueCallback<String>() {
                                             @Override
                                             public void onReceiveValue(String value) {
@@ -149,29 +163,27 @@ public class WebSessionClaimer {
             }
         });
 
+        // 调用方是工作线程：等主线程把页面流程跑完（或超时）
         try {
             done.await(budget + 8000L, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ignored) {
         }
 
-        // 清理：销毁 WebView 并退出线程
-        try {
-            h.post(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        if (holder[0] != null) {
-                            holder[0].stopLoading();
-                            holder[0].destroy();
-                            holder[0] = null;
-                        }
-                    } catch (Throwable ignored) {
+        // 清理：同样必须回主线程销毁 WebView
+        h.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (holder[0] != null) {
+                        holder[0].stopLoading();
+                        holder[0].removeAllViews();
+                        holder[0].destroy();
+                        holder[0] = null;
                     }
+                } catch (Throwable ignored) {
                 }
-            });
-            ht.quitSafely();
-        } catch (Throwable ignored) {
-        }
+            }
+        });
         if (fres.detail.length() == 0 && !fres.launched) {
             fres.detail = "页面加载超时";
         }
